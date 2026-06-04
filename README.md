@@ -19,7 +19,9 @@ Modular shell configuration framework for aliases and functions. Designed for po
 
 3. Reload the shell environment:
    ```bash
-   source ~/.zshrc
+   source ~/.zshrc  # For Zsh (macOS default)
+   # or
+   source ~/.bashrc # For Bash (Linux default)
    ```
 
 ## Directory Structure
@@ -31,23 +33,28 @@ Modular shell configuration framework for aliases and functions. Designed for po
   - flutter.sh: Build automation and workspace maintenance scripts for Flutter.
 - system/: macOS-specific system utilities and display management.
 
-## Primary Utilities
+## Primary Utilities & Aliases
 
-### adbip
-Retrieves the IPv4 address of a connected Android device.
-- Handles multiple connected devices via an interactive selection menu.
-- Prioritizes the wlan0 interface.
-- Includes a fallback mechanism to query all network interfaces if wlan0 is unavailable.
-- Supports the -r or --raw flag for full command output.
+### General Aliases (`general/aliases.sh`)
+- **`cls`**: Clears the terminal screen (runs `clear`).
+- **`ll`**: Detailed directory listing with hidden files (runs `ls -lah`).
+- **`aledit`**: Opens the shell configuration directory in Neovim (`sudo nvim ~/.shell/sh-core/`).
+- **`sourcerc`**: Quickly reloads and applies updates to the current shell config (runs `source ~/.zshrc`).
 
-### fcbuild
-Automates the production build sequence for Flutter applications on Android and iOS.
+### Android & ADB Utilities (`mobile/android.sh`)
+- **`adb`**: An intelligent wrapper for the standard `adb` command. If multiple devices are detected and no target (`-s`, `-d`, `-e`) is specified, it prompts you with a clean, single-column interactive selection menu showing model names, serials, and states. Support `q` to cancel the command. Bypasses target checks for device-agnostic commands (e.g., `devices`, `connect`, `disconnect`, `help`).
+- **`adbip`**: Resolves the IPv4 address of a connected Android device. Uses the `adb` wrapper to resolve target devices interactively. Prioritizes the `wlan0` interface, with fallback options. Supports `-r` or `--raw` for verbose outputs.
 
-### fpclean_all
-Executes a parallelized flutter clean across all projects in the current directory, optimized for local CPU core counts.
+### Flutter Utilities (`mobile/flutter.sh`)
+- **`fcbuild`**: Automates production build sequences (`appbundle --release`) on Android and iOS (running Cocoapods sync).
+- **`fcbuild-reset`**: Performs a clean sequence (`flutter clean`, deintegrates and updates Cocoapods) and builds the production package.
+- **`fpclean_all`**: Executes a parallelized `flutter clean` across all project directories nested under the current path (auto-tuned for Apple Silicon / local CPU cores).
 
-### reinitdisplay
-Addresses macOS display wake failures through power management and caffeinate utilities.
+### macOS System Utilities (`system/macos.sh`)
+- **`reinitdisplay`**: Puts displays to sleep and wakes them up immediately via power management (`pmset` and `caffeinate`) to resolve display wake failures.
+- **`hardreinitdisplay`**: Performs a hard reload of the macOS desktop manager (runs `sudo killall -HUP WindowServer`).
 
 ## Portability
-This framework is designed for cross-machine synchronization. The init.sh script resolves its absolute path at runtime to ensure all modules are sourced correctly regardless of the local installation path.
+This framework is designed for cross-machine synchronization. The `init.sh` script resolves its absolute path at runtime to ensure all modules are sourced correctly regardless of the local installation path.
+
+It is fully compatible with both Zsh and Bash environments on macOS and Linux, dynamically handling shell-specific behaviors (such as array indexing differences).
