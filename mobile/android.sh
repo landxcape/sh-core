@@ -141,3 +141,98 @@ adbip() {
     fi
   fi
 }
+
+# Output Android signing report grouped by unique signing config (deduped by SHA1)
+# Usage: signingreport [variant_filter]
+#   variant_filter: optional regex to filter variants (default: release|debug|profile)
+#   Examples: signingreport, signingreport debug, signingreport release
+signingreport() {
+  local dir="$PWD"
+  local gradlew=""
+
+  # Search upwards for gradlew executable
+  while [[ "$dir" != "/" ]]; do
+    if [[ -x "$dir/gradlew" ]]; then
+      gradlew="$dir/gradlew"
+      break
+    fi
+    dir="$(dirname "$dir")"
+  done
+
+  if [[ -z "$gradlew" ]]; then
+    if command -v gradle >/dev/null 2>&1; then
+      gradlew="gradle"
+    else
+      echo "Error: gradlew or gradle executable not found." >&2
+      return 1
+    fi
+  fi
+
+  local filter="${1:-release|debug|profile}"
+
+  "$gradlew" signingReport --console=plain 2>&1 | awk -v pattern="$filter" '
+    # --- Parsing phase: collect fields per block ---
+    /^Variant:/ {
+      variant = substr($0, index($0, ":") + 2)
+      config = ""; store = ""; alias_name = ""; md5 = ""; sha1 = ""; sha256 = ""; valid = ""
+      in_block = (tolower(variant) ~ tolower(pattern))
+    }
+    in_block && /^Config:/     { config     = substr($0, index($0, ":") + 2) }
+    in_block && /^Store:/      { store      = substr($0, index($0, ":") + 2) }
+    in_block && /^Alias:/      { alias_name = substr($0, index($0, ":") + 2) }
+    in_block && /^MD5:/        { md5        = substr($0, index($0, ":") + 2) }
+    in_block && /^SHA1:/       { sha1       = substr($0, index($0, ":") + 2) }
+    in_block && /^SHA-256:/    { sha256     = substr($0, index($0, ":") + 2) }
+    in_block && /^Valid until:/ { valid     = substr($0, index($0, ":") + 2) }
+
+    # End of a block: register the variant under its SHA1 key (dedup anchor)
+    in_block && /^----------/ {
+      if (sha1 != "") {
+        if (!(sha1 in seen)) {
+          seen[sha1]  = 1
+          order[++count] = sha1
+          configs[sha1]  = config
+          stores[sha1]   = store
+          aliases[sha1]  = alias_name
+          md5s[sha1]     = md5
+          sha1s[sha1]    = sha1
+          sha256s[sha1]  = sha256
+          valids[sha1]   = valid
+        }
+        # Append variant name only if this (sha1, variant) pair is new
+        if (!((sha1 SUBSEP variant) in seen_variant)) {
+          seen_variant[sha1 SUBSEP variant] = 1
+          if (variants[sha1] == "") {
+            variants[sha1] = variant
+          } else {
+            variants[sha1] = variants[sha1] ", " variant
+          }
+        }
+      }
+      in_block = 0
+    }
+
+    # --- Print phase: emit one card per unique signing config ---
+    END {
+      sep = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+      for (i = 1; i <= count; i++) {
+        k = order[i]
+        print sep
+        printf "  Config  : %s\n", configs[k]
+        printf "  Variants: %s\n", variants[k]
+        printf "  Store   : %s\n", stores[k]
+        printf "  Alias   : %s\n", aliases[k]
+        print  ""
+        printf "  MD5     : %s\n", md5s[k]
+        printf "  SHA1    : %s\n", sha1s[k]
+        printf "  SHA-256 : %s\n", sha256s[k]
+        print  ""
+        printf "  Valid   : %s\n", valids[k]
+      }
+      if (count > 0) print sep
+      if (count == 0) print "No matching signing configs found for pattern: " pattern
+    }
+  '
+}
+
+alias signing-report='signingreport'
