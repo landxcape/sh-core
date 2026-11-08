@@ -62,39 +62,36 @@ _adb_select_device() {
 
 # Wrapper for adb command to handle automatic multi-device selection
 adb() {
-  # If device target options (-s, -d, -e) are already present, or if it's a non-device command, bypass wrapper
-  local bypass=false
-  local non_device_cmds=("devices" "connect" "disconnect" "start-server" "kill-server" "version" "help")
-
+  # If device target options (-s, -d, -e) are already present, run directly
   for arg in "$@"; do
     if [[ "$arg" == "-s" || "$arg" == "-d" || "$arg" == "-e" ]]; then
-      bypass=true
-      break
+      command adb "$@"
+      return $?
     fi
   done
 
-  if [[ -n "$1" ]] && [[ " ${non_device_cmds[*]} " =~ " $1 " ]]; then
-    bypass=true
-  fi
+  # Run command and capture stderr to check if adb complains about multiple devices
+  local err_file
+  err_file=$(mktemp)
+  command adb "$@" 2>"$err_file"
+  local exit_code=$?
 
-  if [ "$bypass" = true ]; then
-    command adb "$@"
-    return $?
-  fi
-
-  local devices=($(command adb devices | grep -v "List" | awk '{print $1}' | grep .))
-  if [[ ${#devices[@]} -gt 1 ]]; then
+  if [[ $exit_code -ne 0 ]] && grep -q "more than one device/emulator" "$err_file"; then
+    rm -f "$err_file"
     local serial
     serial=$(_adb_select_device)
     local exit_status=$?
     if [[ $exit_status -eq 0 && -n "$serial" ]]; then
       command adb -s "$serial" "$@"
+      return $?
     else
       return $exit_status
     fi
-  else
-    command adb "$@"
   fi
+
+  cat "$err_file" >&2
+  rm -f "$err_file"
+  return $exit_code
 }
 
 # Get Android device IP address (wlan0 with fallback)
